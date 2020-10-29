@@ -109,11 +109,11 @@ end
 proj_xy = Vector(1, 1, 0)
 
 function ENT:PhysicsUpdate(p)
-  if self:Health() <= 0 then return end
+  if self.Died then return end
   local oldVel = p:GetVelocity()
   local oldRot = p:GetAngleVelocity()
   local rot = Vector(0, 0, 0)
-  local vel = oldVel * 0.99 + VectorRand(-shake, shake)
+  local vel = oldVel * 0.99
   local driver = self:GetDriver()
   self.driver = driver
   if IsValid(driver) then
@@ -131,16 +131,25 @@ function ENT:PhysicsUpdate(p)
     end
     if driver:KeyDown(IN_MOVERIGHT) then
       vel = vel + rt * acc
+      ang:RotateAroundAxis(fwd, acc)
     elseif driver:KeyDown(IN_MOVELEFT) then
       vel = vel - rt * acc
+      ang:RotateAroundAxis(fwd, -acc)
     end
     if driver:KeyDown(IN_JUMP) then
       vel = vel + up * acc
+      -- print(vel:Angle(), vel:Angle():Up())
+      ang:RotateAroundAxis(rt, vel:Angle():Up().p)
     elseif driver:KeyDown(IN_DUCK) then
       vel = vel - up * acc
+      ang:RotateAroundAxis(rt, -vel:Angle():Up().p)
     end
     local velL = vel:Length()
-    rot = -oldRot * 0.05 + VectorRand(-shake, shake)
+    rot = rot + -oldRot * 0.05
+    if velL > 5 then
+      vel = vel + VectorRand(-shake, shake)
+      rot = rot + VectorRand(-shake, shake)
+    end
     local d = self:WorldToLocalAngles(ang)
     rot = rot + Vector(d.r, d.p, d.y) * rotAccel
     if driver:KeyDown(IN_ATTACK) then
