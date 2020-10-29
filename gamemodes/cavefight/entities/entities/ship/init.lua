@@ -204,14 +204,14 @@ util.AddNetworkString('cave.kill')
 
 function ENT:OnTakeDamage(dmg)
   if self.shield then return end
-  if self:Health() <= 0 then return end
+  if self.Died then return end
   self:SetHealth(self:Health() - dmg:GetDamage())
   local p = self:GetPhysicsObject()
   p:ApplyForceOffset(dmg:GetDamageForce(), dmg:GetDamagePosition())
   if self:Health() <= 0 then
-    self:Die()
     local driver = self:GetDriver()
     local attacker = dmg:GetAttacker()
+    self:Die(attacker)
     net.Start('cave.kill')
       net.WriteEntity(attacker)
       net.WriteEntity(driver)
