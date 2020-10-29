@@ -168,8 +168,9 @@ end
 
 local dieSound = Sound('npc/turret_floor/die.wav')
 
-function ENT:Die()
+function ENT:Die(by)
   self:SetHealth(0)
+  self.Died = true
   self:RemoveAllBonuses()
   constraint.RemoveAll(self)
   self:EmitSound(dieSound)
@@ -177,16 +178,19 @@ function ENT:Die()
   if IsValid(driver) then
     driver:AddDeaths(1)
   end
-  local sparks = EffectData()
-  sparks:SetEntity(self)
-  sparks:SetOrigin(self:GetPos())
-  util.Effect('ManhackSparks', sparks, true, true)
+  do
+    local explosion = EffectData()
+    explosion:SetEntity(self)
+    explosion:SetOrigin(self:GetPos())
+    explosion:SetMagnitude(50)
+    explosion:SetScale(100)
+    util.Effect('Explosion', explosion, true, true)
+    util.BlastDamage(self, self, self:GetPos(), 500, 150)
+  end
   playSound(SOUND_ZAP, self:GetPos())
   if IsValid(self.grabConstraint) then
     self.grabConstraint:Remove()
   end
-  local p = self:GetPhysicsObject()
-  p:EnableGravity(true)
   timer.Simple(3, function()
     if IsValid(self) and IsValid(self:GetDriver()) then
       self:Reactivate()
