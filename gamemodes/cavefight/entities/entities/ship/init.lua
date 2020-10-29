@@ -29,14 +29,25 @@ function ENT:Reactivate()
   util.Effect('cball_bounce', sparks, true, true)
   playSound(SOUND_RESPAWN, self:GetPos())
   local driver = self:GetDriver()
+  self.Died = false
+
   if IsValid(driver) then
     driver:SetEyeAngles(angle_zero)
   end
 end
 
+local function BulletHole(_, tr, _)
+  if tr.Entity:IsWorld() then return end
+  local shell = EffectData()
+  shell:SetOrigin(tr.HitPos)
+  shell:SetNormal(tr.HitNormal)
+  shell:SetRadius(0.5 + math.random(0, 0.2))
+  util.Effect('AR2Explosion', shell, true, true)
+end
+
 function ENT:FireBullet(driver)
   local t = CurTime()
-  if t - (self.lastBullet or 0) > 0.05 then
+  if t - (self.lastBullet or 0) > 0.15 then
     self.lastBullet = t
     local eyePos, eyeAng = caveCalcView(driver, driver:EyePos(), driver:EyeAngles())
     local tr = util.TraceLine({
