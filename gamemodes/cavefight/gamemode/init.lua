@@ -137,11 +137,9 @@ function playSound(index, pos)
 	net.Broadcast()
 end
 
-util.AddNetworkString('cave.thirdperson')
-
-net.Receive('cave.thirdperson', function(len, ply)
+function GM:ShowSpare1(ply)
 	ply:SetThirdperson(not ply:GetThirdperson())
-end)
+end
 
 util.AddNetworkString('cave.requestTimeleft')
 

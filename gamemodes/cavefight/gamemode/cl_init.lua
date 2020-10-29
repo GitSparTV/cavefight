@@ -159,13 +159,6 @@ function GM:PostDrawHUD()
 	end
 end
 
-function GM:PlayerBindPress(ply, bind)
-	if bind == 'gm_showspare1' then
-		net.Start('cave.thirdperson')
-		net.SendToServer()
-	end
-end
-
 function GM:PreDrawHalos()
 	halo.Add(ents.FindByClass('bomb'), Color(255, 255, 0))
 end
