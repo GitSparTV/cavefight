@@ -55,13 +55,13 @@ local tips = {
 }
 
 function GM:OnContextMenuOpen()
-  for _, tip in pairs(tips) do
+  for _, tip in ipairs(tips) do
     notification.AddProgress(tip, tip, 1)
   end
 end
 
 function GM:OnContextMenuClose()
-  for _, tip in pairs(tips) do
+  for _, tip in ipairs(tips) do
     notification.Kill(tip)
   end
 end
