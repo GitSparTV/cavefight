@@ -60,12 +60,13 @@ function ENT:FireBullet(driver)
     self:FireBullets({
       Attacker = driver,
       Damage = self.dmg and 250 or 100,
-      Force = self.dmg and 50 or 30,
+      Force = self.dmg and 5 or 1,
       Spread = Vector(0.02, 0.02, 0),
       IgnoreEntity = self,
       Src = pos,
-      Dir = (tr.HitPos - pos):GetNormalized(),
-      TracerName = 'HelicopterTracer',
+      Dir = tr.HitPos - pos,
+      TracerName = 'AR2Tracer',
+      Callback = BulletHole
     })
     driver:LagCompensation(false)
     local muzzleFlash = EffectData()
@@ -73,11 +74,6 @@ function ENT:FireBullet(driver)
     muzzleFlash:SetAngles(self:GetAngles())
     muzzleFlash:SetScale(1)
     util.Effect('MuzzleEffect', muzzleFlash, true, true)
-    local shell = EffectData()
-    shell:SetEntity(self)
-    shell:SetOrigin(self:LocalToWorld(Vector(0, -5, 0)))
-    shell:SetAngles(self:LocalToWorldAngles(Angle(-20, -90, 0)))
-    util.Effect('RifleShellEject', shell, true, true)
     playSound(SOUND_SHOOT, self:GetPos())
   end
 end
