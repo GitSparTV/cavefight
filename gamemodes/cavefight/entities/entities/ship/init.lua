@@ -275,13 +275,19 @@ local dieSound = Sound('npc/turret_floor/die.wav')
 
 function ENT:Die(by)
 	self:SetHealth(0)
+	self:SetLights(false)
 	self.Died = true
 	self:RemoveAllBonuses()
+
+	if self.grabConstraint and self.grabConstraint:IsValid() then
+		self.grabConstraint:Remove()
+	end
+
 	constraint.RemoveAll(self)
 	self:EmitSound(dieSound)
 	local driver = self:GetDriver()
 
-	if IsValid(driver) then
+	if driver:IsValid() then
 		driver:AddDeaths(1)
 	end
 
@@ -292,17 +298,13 @@ function ENT:Die(by)
 		explosion:SetMagnitude(50)
 		explosion:SetScale(100)
 		util.Effect('Explosion', explosion, true, true)
-		util.BlastDamage(self, self, self:GetPos(), 500, 150)
+		util.BlastDamage(self, by or self, self:GetPos(), 250, 150)
 	end
 
 	playSound(SOUND_ZAP, self:GetPos())
 
-	if IsValid(self.grabConstraint) then
-		self.grabConstraint:Remove()
-	end
-
 	timer.Simple(3, function()
-		if IsValid(self) and IsValid(self:GetDriver()) then
+		if self:IsValid() and self:GetDriver():IsValid() then
 			self:Reactivate()
 		else
 			self:Remove()
@@ -311,6 +313,9 @@ function ENT:Die(by)
 end
 
 util.AddNetworkString('cave.kill')
+util.AddNetworkString('cave.hit')
+local HitTable = {}
+local Vector1 = Vector(100, 100, 100)
 
 function ENT:OnTakeDamage(dmg)
 	if self.shield then return end
@@ -318,18 +323,24 @@ function ENT:OnTakeDamage(dmg)
 	self:SetHealth(self:Health() - dmg:GetDamage())
 	local p = self:GetPhysicsObject()
 	p:ApplyForceOffset(dmg:GetDamageForce(), dmg:GetDamagePosition())
+	local driver = self:GetDriver()
+	local attacker = dmg:GetAttacker()
 
 	if self:Health() <= 0 then
-		local driver = self:GetDriver()
-		local attacker = dmg:GetAttacker()
+		p:ApplyForceOffset(Vector1, dmg:GetDamagePosition())
 		self:Die(attacker)
 		net.Start('cave.kill')
 		net.WriteEntity(attacker)
 		net.WriteEntity(driver)
 		net.Broadcast()
-
-		if IsValid(attacker) then
-			attacker:AddFrags(attacker == driver and -1 or 1)
-		end
+		attacker:AddFrags(attacker == driver and -1 or 1)
+	else
+		net.Start('cave.hit')
+		net.WriteUInt(dmg:GetDamage(), 14)
+		net.WriteEntity(driver)
+		local HitTable = HitTable
+		HitTable[1] = attacker
+		HitTable[2] = driver
+		net.Send(HitTable)
 	end
 end
