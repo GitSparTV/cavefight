@@ -16,7 +16,10 @@ local camOffset = Vector(0, 0, 10)
 sounds = {}
 
 local function soundEnum(name, snd)
-	_G[name] = table.insert(sounds, Sound(snd))
+	local sounds = sounds
+	local k = #sounds + 1
+	sounds[k] = Sound(snd)
+	_G[name] = k
 end
 
 soundEnum('SOUND_SHOOT', 'weapons/alyx_gun/alyx_gun_fire5.wav')
