@@ -32,25 +32,36 @@ function spawnShip(driver)
 	ship:Spawn()
 end
 
+util.AddNetworkString('cave.restartProgress')
+
 local function spawnChunks()
 	local from, to = -caveMapSize / 2, caveMapSize / 2
+	local px, total = 0, math.ceil((to - from + 1) / caveChunkSize) ^ 2
 
 	for y = from, to, caveChunkSize do
 		for x = from, to, caveChunkSize do
+			local S = SysTime()
 			local chunk = ents.Create('chunk')
 			chunk:SetSeed(caveSeed)
 			chunk:SetPos(Vector(x, y, 1))
 			chunk:Spawn()
 			chunk:Activate()
+			px = px + 1
+			net.Start('cave.restartProgress')
+			net.WriteDouble(px / total)
+			net.Broadcast()
+			local E = SysTime()
+			print("chunk took", E - S)
+			coroutine.wait(0.2)
 		end
 	end
 end
 
 local bonusCount = {
-	[BONUS_HEALTH] = 1,
-	[BONUS_INVIS] = 1,
-	[BONUS_DAMAGE] = 1,
-	[BONUS_SHIELD] = 1,
+	{BONUS_HEALTH, 1},
+	{BONUS_INVIS, 1},
+	{BONUS_DAMAGE, 1},
+	{BONUS_SHIELD, 1},
 }
 
 local bombCount = 5
@@ -63,35 +74,72 @@ local toRemove = {
 }
 
 local timelimit = 300 -- 5 min
+local GenerationInProgress = false
 
-function generateMap()
+function generateMap_coro()
 	caveSeed = math.random(0, 1000)
 
 	for _, ent in pairs(ents.GetAll()) do
 		if toRemove[ent:GetClass()] then
 			ent:Remove()
+			coroutine.yield()
 		end
 	end
 
 	spawnChunks()
+	coroutine.yield()
 
-	for bonusType, count in pairs(bonusCount) do
-		for i = 1, count do
-			spawnBonus(bonusType)
+	for k, bonus in ipairs(bonusCount) do
+		for i = 1, bonus[2] do
+			spawnBonus(bonus[1])
+			coroutine.yield()
 		end
 	end
 
 	for i = 1, bombCount do
 		spawnBomb()
+		coroutine.yield()
 	end
 
-	for _, ply in pairs(player.GetAll()) do
+	for _, ply in ipairs(player.GetAll()) do
 		spawnShip(ply)
 		ply:SetFrags(0)
 		ply:SetDeaths(0)
+		coroutine.yield()
 	end
 
 	setNextWorldGen(CurTime() + timelimit)
+	GenerationInProgress = false
+end
+
+function generateMap()
+	if GenerationInProgress then return end
+	GenerationInProgress = true
+	local coro = coroutine.create(generateMap_coro)
+
+	do
+		local stat, err = coroutine.resume(coro)
+
+		if not stat then
+			ErrorNoHalt(err)
+		end
+	end
+
+	hook.Add("Think", "cave.generateMapCoroutine", function()
+		if coroutine.status(coro) == "dead" then
+			hook.Remove("Think", "cave.generateMapCoroutine")
+
+			return true
+		end
+
+		do
+			local stat, err = coroutine.resume(coro)
+
+			if not stat then
+				ErrorNoHalt(err)
+			end
+		end
+	end)
 end
 
 function GM:InitPostEntity()
