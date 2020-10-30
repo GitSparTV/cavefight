@@ -2,6 +2,7 @@ AddCSLuaFile()
 ENT.Base = 'base_ai'
 ENT.Type = 'anim'
 ENT.EngineMuzzlePos = Vector(-10, 1.5, -3.5)
+ENT.RenderGroup = RENDERGROUP_BOTH
 
 if SERVER then
 	util.AddNetworkString('setShipDriver')
@@ -9,6 +10,8 @@ end
 
 function ENT:SetupDataTables()
 	self:NetworkVar('Entity', 0, 'Driver')
+	self:NetworkVar('Bool', 0, 'Lights')
+	self:SetLights(true)
 end
 
 local shipSound = Sound('npc/turret_wall/turret_loop1.wav')
@@ -16,20 +19,30 @@ local shipSound = Sound('npc/turret_wall/turret_loop1.wav')
 function ENT:Initialize()
 	self:SetModel('models/shield_scanner.mdl')
 	self:SetSequence(self:LookupSequence('OpenUp'))
+	self:SetRenderMode(RENDERMODE_TRANSALPHA)
+	self.Ammo = 50
 
 	if SERVER then
 		self:SetLagCompensated(true)
 		self:PhysicsInit(SOLID_VPHYSICS)
 		self:SetMoveType(MOVETYPE_VPHYSICS)
-		local p = self:GetPhysicsObject()
-		p:SetMaterial('metal')
-		p:SetMass(100)
-		p:Wake()
+
+		do
+			local p = self:GetPhysicsObject()
+			p:SetMaterial('metal')
+			p:SetMass(100)
+			p:Wake()
+		end
+
 		self:Reactivate()
 	else
 		self.idleSound = CreateSound(self, shipSound)
 		self.idleSound:PlayEx(0.2, 100)
 		self.emitter = ParticleEmitter(vector_origin, false)
+		self.emitter:SetNoDraw(true)
+		self.emitter:SetNearClip(0, 0.1)
+		self.lastParticle = 0
+		self.lastSmokeParticle = 0
 	end
 end
 
@@ -166,5 +179,11 @@ function ENT:OnBonusEnd(bonusType)
 		self.dmg = false
 	elseif bonusType == BONUS_SHIELD then
 		self.shield = false
+	end
+end
+
+function ENT:OnRemove()
+	if CLIENT then
+		self.emitter:Finish()
 	end
 end
