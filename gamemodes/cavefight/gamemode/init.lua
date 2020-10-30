@@ -145,6 +145,14 @@ function GM:ShowSpare1(ply)
 	ply:SetThirdperson(not ply:GetThirdperson())
 end
 
+function GM:PlayerSwitchFlashlight(ply)
+	local ship = ply:GetShip()
+
+	if ship:IsValid() then
+		ship:ToggleLight()
+	end
+end
+
 util.AddNetworkString('cave.requestTimeleft')
 
 net.Receive('cave.requestTimeleft', function(len, ply)
