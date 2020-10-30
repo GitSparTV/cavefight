@@ -60,6 +60,7 @@ function GM:OnContextMenuClose()
 end
 
 local hudColor = Color(0, 200, 255, 255)
+HUDColor = Color(0, 200, 255, 255)
 local bgTint = Material('vgui/zoom')
 local gradrt = Material('gui/gradient')
 
@@ -80,46 +81,141 @@ surface.CreateFont('CaveTimer', {
 	size = 24
 })
 
+surface.CreateFont('CaveMedium', {
+	font = 'Roboto',
+	size = 40
+})
+
+local Damaged, DamagedTime = false, 0
+local Hit, HitTime, HitType, HitAmount = false, 0, false, 0
+
+net.Receive("cave.hit", function()
+	local dmg, target = net.ReadUInt(14), net.ReadEntity()
+	if not target:IsValid() then return end
+
+	if target == LocalPlayer() then
+		Damaged = true
+		DamagedTime = SysTime()
+	else
+		Hit = true
+		HitAmount = dmg
+		HitType = true
+		HitTime = SysTime()
+	end
+end)
+
+net.Receive('cave.kill', function(len)
+	local attacker, driver = net.ReadEntity(), net.ReadEntity()
+	notification.AddLegacy(attacker == driver and attacker:Nick() .. ' suicided' or attacker:Nick() .. ' killed ' .. driver:Nick(), NOTIFY_GENERIC, 3)
+
+	if attacker == LocalPlayer() then
+		Hit = true
+		HitType = false
+		HitTime = SysTime()
+	end
+end)
+
+local redColor = Color(255, 0, 0)
+local TraceResult = {}
+
+local TraceData = {
+	start = false,
+	endpos = false,
+	filter = false,
+	output = TraceResult
+}
+
 function GM:HUDPaint()
 	local w, h = ScrW(), ScrH()
 	local driver = LocalPlayer()
 	local ship = driver:GetShip()
-	if not IsValid(ship) then return end
+	if not ship:IsValid() then return end
+	-- local TraceData = TraceData
+	-- TraceData.start = ship:GetPos()
+	-- TraceData.endpos = TraceData.start + ship:GetForward() * 33000
+	-- TraceData.filter = ship
+	-- local tr = util.TraceLine(TraceData)
+	-- TraceData.start = ship:GetPos()
+	-- TraceData.endpos = tr.HitPos
+	-- tr = util.TraceLine(TraceData)
+	-- local pos = tr.HitPos:ToScreen()
+	local pos = (ship:GetPos() + ship:GetForward() * 33000):ToScreen()
+	local m = Matrix()
+	DisableClipping(true)
+	m:Translate(Vector(pos.x, pos.y, 0))
+	surface.SetMaterial(gradrt)
+	surface.SetDrawColor(hudColor)
+	m:Rotate(Angle(0, ship:GetAngles()[3], 0))
 
-	if IsValid(ship) then
-		local eyePos, eyeAng = caveCalcView(driver, driver:EyePos(), driver:EyeAngles())
-
-		local tr = util.TraceLine({
-			start = eyePos,
-			endpos = eyePos + eyeAng:Forward() * 100000,
-			filter = ship
-		})
-
-		tr = util.TraceLine({
-			start = ship:GetPos(),
-			endpos = tr.HitPos,
-			filter = ship
-		})
-
-		local pos = tr.HitPos:ToScreen()
-		local m = Matrix()
-		DisableClipping(true)
-		m:Translate(Vector(math.floor(pos.x), math.floor(pos.y), 0))
-		surface.SetMaterial(gradrt)
-		surface.SetDrawColor(hudColor)
-		m:Rotate(Angle(0, ship:GetAngles().r, 0))
+	do
 		cam.PushModelMatrix(m)
-		surface.DrawTexturedRect(8, 0, 100, 2)
+		local reload = ship.Reloading
+
+		if reload then
+			surface.SetAlphaMultiplier(0.7 + math.sin(SysTime() * 10) * 0.3)
+		end
+
+		draw.SimpleText(reload and "RELOADING" or ship.Ammo .. "/" .. 50, "CaveTimer", 70, -30, color_white, 1)
+
+		if reload then
+			surface.SetAlphaMultiplier(1)
+		end
+
+		surface.DrawTexturedRect(2 + ship:GetVelocity():Length() * 0.05, 0, 100, 2)
 		cam.PopModelMatrix()
-		m:Rotate(Angle(0, 180, 0))
-		cam.PushModelMatrix(m)
-		surface.DrawTexturedRect(8, -2, 100, 2)
-		cam.PopModelMatrix()
-		DisableClipping(false)
 	end
 
-	local hp = ship:Health() / ship:GetMaxHealth()
+	m:Rotate(Angle(0, 180, 0))
+
+	do
+		cam.PushModelMatrix(m)
+		surface.DrawTexturedRect(2 + ship:GetVelocity():Length() * 0.05, -2, 100, 2)
+		cam.PopModelMatrix()
+	end
+
+	if Hit then
+		local delta = SysTime() - HitTime
+		surface.SetAlphaMultiplier(1 - delta * 2)
+		draw.SimpleText(HitType and "-" .. HitAmount .. " HIT" or "KILL", "CaveTimer", w / 2, h / 2 - 40, color_white, 1, 1)
+		surface.SetAlphaMultiplier(1)
+
+		if delta >= 0.5 then
+			Hit = false
+		end
+	end
+
+	DisableClipping(false)
+	-- TraceData.endpos = TraceData.start + ship:GetForward() * 33000
+	-- tr = util.TraceLine(TraceData)
+	-- pos = tr.HitPos:ToScreen()
+	surface.DrawCircle(w / 2, h / 2, 4)
+
+	for k, v in ipairs(ents.FindByClass("ship")) do
+		if v == ship then
+			goto skip
+		end
+
+		local epos = v:GetPos() - v:GetVelocity() - ship:GetVelocity() * 1.1
+		epos = epos:ToScreen()
+
+		if not epos.visible then
+			goto skip
+		end
+
+		local ewpos = v:GetPos():ToScreen()
+
+		if not ewpos.visible then
+			goto skip
+		end
+
+		surface.SetDrawColor(hudColor)
+		surface.DrawLine(ewpos.x, ewpos.y, epos.x, epos.y)
+		surface.DrawCircle(epos.x, epos.y, 6, math.abs((w / 2 - epos.x) + (h / 2 - epos.y)) > 2 and hudColor or redColor)
+		::skip::
+	end
+
 	surface.SetDrawColor(hudColor)
+	local hp = ship:Health() / ship:GetMaxHealth()
 	surface.DrawRect(w / 3, h - 64, w / 3 * hp, 10)
 	surface.DrawRect(w / 3 - 15, h - 74, 10, 30)
 	surface.DrawRect(w / 3 * 2 + 5, h - 74, 10, 30)
