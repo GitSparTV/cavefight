@@ -38,7 +38,7 @@ function caveCalcView(ply, pos, ang)
 	local ship = ply:GetShip()
 
 	if IsValid(ship) then
-		ang = LerpVector(0.2, ang:Forward(), ship:GetAngles():Forward()):Angle()
+		ang = LerpVector(0.1, ang:Forward(), ship:GetAngles():Forward()):Angle()
 		local start = ship:GetPos()
 		local thirdperson = ply:GetThirdperson()
 
