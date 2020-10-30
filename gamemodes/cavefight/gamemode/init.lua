@@ -119,13 +119,17 @@ end
 function GM:PlayerDisconnected(ply)
 	local ship = ply:GetShip()
 
-	if IsValid(ship) then
+	if ship:IsValid() then
 		ship:Die()
 	end
 end
 
 function GM:CanPlayerSuicide(ply)
-	return false
+	local ship = ply:GetShip()
+
+	if ship:IsValid() then
+		ship:Die()
+	end
 end
 
 util.AddNetworkString('cave.sound')
