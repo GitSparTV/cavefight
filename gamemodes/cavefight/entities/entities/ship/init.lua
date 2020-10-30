@@ -2,133 +2,217 @@ AddCSLuaFile('cl_init.lua')
 include('shared.lua')
 util.AddNetworkString('cave.applyBonus')
 util.AddNetworkString('cave.removeBonus')
-local maxVel = 400
-local accel = 3
-local rotAccel = 0.1
-local shake = 1
+util.AddNetworkString('cave.ship.attack')
+util.AddNetworkString('cave.ship.reload')
 local minRespRadius, maxRespRadius = caveMapSize / 6, caveMapSize / 6 * 2
 local respRange = maxRespRadius - minRespRadius
+local tr = {}
 
 function ENT:Reactivate()
 	local r, a = minRespRadius + math.random() * respRange, math.random() * math.pi * 2
 	local x, y = math.cos(a) * r, math.sin(a) * r
 	constraint.RemoveAll(self)
-	self:SetPos(Vector(x, y, caveHeightAtPoint(caveSeed, x, y) + caveMaxCeil / 2))
+	local pos = Vector(x, y, caveHeightAtPoint(caveSeed, x, y) + caveMaxCeil / 2)
+	tr.start = pos
+	tr.endpos = pos - Vector(0, 0, 1000)
+	local tr1 = util.TraceLine(tr)
+	tr.endpos = pos + Vector(0, 0, 1000)
+	local tr2 = util.TraceLine(tr)
+
+	if not tr1.Hit or not tr1.Entity:IsValid() then
+		pos = tr2.HitPos + Vector(0, 0, 20)
+	end
+
+	if not tr2.Hit or not tr2.Entity:IsValid() then
+		pos = tr1.HitPos - Vector(0, 0, 20)
+	end
+
+	self:SetPos(pos)
 	self:SetAngles(angle_zero)
 	self:SetMaxHealth(1000)
 	self:SetHealth(self:GetMaxHealth())
+	self.Ammo = 50
+	self.Reloading = false
 	local p = self:GetPhysicsObject()
+	self:SetLights(true)
 	p:EnableGravity(false)
 	p:SetVelocity(vector_origin)
 	local sparks = EffectData()
 	sparks:SetOrigin(self:GetPos())
 	util.Effect('cball_bounce', sparks, true, true)
+	net.Start("cave.ship.reload")
+	net.Send(self:GetDriver())
 	playSound(SOUND_RESPAWN, self:GetPos())
 	local driver = self:GetDriver()
 	self.Died = false
+	driver:SetEyeAngles(angle_zero)
+end
 
-	if IsValid(driver) then
-		driver:SetEyeAngles(angle_zero)
+do
+	local function BulletHole(ent, tr, dmg)
+		if tr.Entity:GetClass() ~= "ship" then return end
+		local trace = EffectData()
+		trace:SetOrigin(tr.HitPos)
+		trace:SetNormal(tr.HitNormal)
+		local dist = ent:GetShip():GetPos():Distance(tr.HitPos) / 50
+		dmg:SubtractDamage(math.min(dmg:GetDamage(), dist))
+		trace:SetRadius(0.5 + dist / 50)
+		util.Effect('AR2Explosion', trace, true, true)
+	end
+
+	local BulletData = {
+		Attacker = false,
+		Damage = false,
+		Force = false,
+		Spread = Vector(0.02, 0.02, 0),
+		IgnoreEntity = false,
+		Src = false,
+		Dir = false,
+		HullSize = 10,
+		TracerName = 'AR2Tracer',
+		Callback = BulletHole
+	}
+
+	local TraceResult = {}
+
+	local TraceInfo = {
+		start = false,
+		endpos = false,
+		filter = false,
+		output = TraceResult
+	}
+
+	function ENT:FireBullet(driver)
+		local t = CurTime()
+
+		if not self.Reloading and self.Ammo > 0 and t - (self.lastBullet or 0) > 0.2 then
+			self.lastBullet = t
+			self.Ammo = self.Ammo - 1
+			driver:LagCompensation(true)
+			local pos = self:GetPos()
+
+			do
+				local BulletData = BulletData
+				BulletData.Attacker = driver
+				BulletData.Damage = (self.dmg and 250 or 100) + math.random(-10, 10)
+				BulletData.Force = self.dmg and 10 or 5
+				BulletData.IgnoreEntity = self
+				BulletData.Src = pos
+				BulletData.Dir = self:GetForward()
+				self:FireBullets(BulletData)
+			end
+
+			driver:LagCompensation(false)
+			local muzzleFlash = EffectData()
+			muzzleFlash:SetOrigin(self:LocalToWorld(Vector(15, 0, 0)))
+			muzzleFlash:SetAngles(self:GetAngles())
+			muzzleFlash:SetScale(1)
+			util.Effect('MuzzleEffect', muzzleFlash, true, true)
+			net.Start("cave.ship.attack")
+			net.Send(driver)
+			playSound(SOUND_SHOOT, self:GetPos())
+		end
 	end
 end
 
-local function BulletHole(_, tr, _)
-	if tr.Entity:IsWorld() then return end
-	local shell = EffectData()
-	shell:SetOrigin(tr.HitPos)
-	shell:SetNormal(tr.HitNormal)
-	shell:SetRadius(0.5 + math.random(0, 0.2))
-	util.Effect('AR2Explosion', shell, true, true)
+function ENT:Reload()
+	if self.Reloading then return end
+	self.Reloading = true
+	self.ReloadingStart = CurTime()
 end
 
-function ENT:FireBullet(driver)
-	local t = CurTime()
+function ENT:Think()
+	if self.Reloading and CurTime() - self.ReloadingStart > 5 then
+		self.Ammo = 50
+		self.Reloading = false
+		net.Start("cave.ship.reload")
+		net.Send(self:GetDriver())
+	end
+end
 
-	if t - (self.lastBullet or 0) > 0.15 then
-		self.lastBullet = t
-		local eyePos, eyeAng = caveCalcView(driver, driver:EyePos(), driver:EyeAngles())
+function ENT:ToggleLight()
+	self:SetLights(not self:GetLights())
+end
 
-		local tr = util.TraceLine({
-			start = eyePos,
-			endpos = eyePos + eyeAng:Forward() * 100000,
-			filter = self
-		})
+do
+	local TraceResult = {}
 
+	local TraceInfo = {
+		start = false,
+		endpos = false,
+		filter = false,
+		output = TraceResult
+	}
+
+	local hookDist = 300
+
+	function ENT:FireHook(driver)
+		if self.hook and self.hook:IsValid() then return end
 		driver:LagCompensation(true)
+		local eyePos, eyeAng = caveCalcView(driver, driver:EyePos(), driver:EyeAngles())
+		local TraceInfo = TraceInfo
+
+		do
+			TraceInfo.start = eyePos
+
+			do
+				local f = eyeAng:Forward()
+				f:Mul(hookDist)
+				TraceInfo.endpos = eyePos + f
+			end
+
+			TraceInfo.filter = self
+		end
+
+		local tr = util.TraceLine(TraceInfo)
+		if not tr.Entity:IsValid() then return end
 		local pos = self:GetPos()
 
-		self:FireBullets({
-			Attacker = driver,
-			Damage = self.dmg and 250 or 100,
-			Force = self.dmg and 5 or 1,
-			Spread = Vector(0.02, 0.02, 0),
-			IgnoreEntity = self,
-			Src = pos,
-			Dir = tr.HitPos - pos,
-			TracerName = 'AR2Tracer',
-			Callback = BulletHole
-		})
+		do
+			TraceInfo.start = pos
+			TraceInfo.endpos = tr.HitPos
+			tr = util.TraceLine(TraceInfo)
+		end
 
 		driver:LagCompensation(false)
-		local muzzleFlash = EffectData()
-		muzzleFlash:SetOrigin(self:LocalToWorld(Vector(15, 0, 0)))
-		muzzleFlash:SetAngles(self:GetAngles())
-		muzzleFlash:SetScale(1)
-		util.Effect('MuzzleEffect', muzzleFlash, true, true)
-		playSound(SOUND_SHOOT, self:GetPos())
+		local ent = tr.Entity
+		if not ent:IsValid() then return end
+		local len = (tr.HitPos - pos):Length()
+		self.hook = constraint.Rope(self, ent, 0, 0, vector_origin, ent:WorldToLocal(tr.HitPos), len, 0, 0, 10, 'cable/physbeam', false)
+
+		if ent.SetLastHooker then
+			ent:SetLastHooker(driver)
+		end
 	end
 end
 
-local hookDist = 300
-
-function ENT:FireHook(driver)
-	if IsValid(self.hook) then return end
-	driver:LagCompensation(true)
-	local eyePos, eyeAng = caveCalcView(driver, driver:EyePos(), driver:EyeAngles())
-
-	local tr = util.TraceLine({
-		start = eyePos,
-		endpos = eyePos + eyeAng:Forward() * hookDist,
-		filter = self
-	})
-
-	if not IsValid(tr.Entity) then return end
-	local pos = self:GetPos()
-
-	tr = util.TraceLine({
-		start = pos,
-		endpos = tr.HitPos,
-		filter = self,
-	})
-
-	driver:LagCompensation(false)
-	local ent = tr.Entity
-	if not IsValid(ent) then return end
-	local len = (tr.HitPos - pos):Length()
-	self.hook = constraint.Rope(self, ent, 0, 0, vector_origin, ent:WorldToLocal(tr.HitPos), len, 0, 0, 10, 'cable/physbeam', false)
-
-	if ent.SetLastHooker then
-		ent:SetLastHooker(driver)
-	end
-end
-
-proj_xy = Vector(1, 1, 0)
+local proj_xy = Vector(1, 1, 0)
+local maxVel = 400
+local accel = 1
+local rotAccel = 0.1
+local shake = 1
 
 function ENT:PhysicsUpdate(p)
 	if self.Died then return end
-	local oldVel = p:GetVelocity()
 	local oldRot = p:GetAngleVelocity()
 	local rot = Vector(0, 0, 0)
-	local vel = oldVel * 0.99
+	local vel = p:GetVelocity() * 0.99
 	local driver = self:GetDriver()
-	self.driver = driver
 
-	if IsValid(driver) then
+	if driver:IsValid() then
 		local ang = driver:EyeAngles()
 		local fwd = ang:Forward()
 		local rt = ang:Right()
 		local up = ang:Up()
-		local tilt = (self:GetForward() * proj_xy):GetNormalized():Dot((rt * proj_xy):GetNormalized()) * -40
+		local tilt
+
+		do
+			local a, b = self:GetForward() * proj_xy, rt * proj_xy
+			a:Normalize()
+			b:Normalize()
+			tilt = a:Dot(b) * -40
+		end
+
 		ang = ang + Angle(0, 0, tilt)
 		local acc = driver:KeyDown(IN_SPEED) and (accel * 3) or accel
 
