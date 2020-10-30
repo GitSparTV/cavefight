@@ -28,13 +28,13 @@ function ENT:Draw()
 end
 
 function ENT:Think()
-	if not IsValid(self.mesh) then
+	if not self.mesh or not self.mesh:IsValid() then
 		self:InitMesh()
 	end
 end
 
 function ENT:OnRemove()
-	if IsValid(self.mesh) then
+	if self.mesh and self.mesh:IsValid() then
 		self.mesh:Destroy()
 	end
 end
