@@ -64,6 +64,7 @@ nextWorldGenTimestamp = nextWorldGenTimestamp or 0
 
 function setNextWorldGen(timestamp)
 	nextWorldGenTimestamp = timestamp
+	roundStarted = CurTime()
 
 	if SERVER then
 		net.Start('cave.setNextWorldGen')
