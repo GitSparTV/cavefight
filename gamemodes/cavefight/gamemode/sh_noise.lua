@@ -281,42 +281,89 @@ for i = 1, 256 do
 	G[256 + i] = G[i]
 end
 
-local function sCurve(t)
-	return t * t * (3. - 2. * t)
+local sCurve
+
+do
+	local sCurveCache = {}
+
+	function sCurve(t)
+		do
+			local cache = sCurveCache[t]
+			if cache then return cache end
+		end
+
+		local val = t * t * (3. - 2. * t)
+		sCurveCache[t] = val
+
+		return val
+	end
 end
 
-local map256 = function(x) return bit.band(x - 1, 255) + 1 end
+local map256
+
+do
+	local map256Cache = {}
+	local bitband = bit.band
+
+	map256 = function(x)
+		do
+			local cache = map256Cache[x]
+			if cache then return cache end
+		end
+
+		local val = bitband(x - 1, 255) + 1
+		map256Cache[x] = val
+
+		return val
+	end
+end
+
+local NoiseCache = {}
+local Lerp, mathfloor = Lerp, math.floor
 
 function perlinNoise(x, y)
-	local ix = math.floor(x)
-	local iy = math.floor(y)
-	local bx0 = map256(ix)
-	local bx1 = map256(ix + 1)
-	local by0 = map256(iy)
-	local by1 = map256(iy + 1)
-	local dx0 = x - ix
-	local dx1 = dx0 - 1
+	local id = x .. " " .. y
+
+	do
+		local cache = NoiseCache[id]
+		if cache then return cache end
+	end
+
+	local iy, ix
+
+	do
+		local mathfloor = mathfloor
+		ix = mathfloor(x)
+		iy = mathfloor(y)
+	end
+
+	local map256 = map256
+	local P, G = P, G
+	local i = P[map256(ix)]
+	local j = P[map256(ix + 1)]
 	local dy0 = y - iy
+	local dx0 = x - ix
+	local sy, sx
+
+	do
+		local sCurve = sCurve
+		sy = sCurve(dy0)
+		sx = sCurve(dx0)
+	end
+
+	local Lerp = Lerp
+	local by0 = map256(iy)
+	local g00 = G[P[i + by0] + 1]
+	local g10 = G[P[j + by0] + 1]
+	local dx1 = dx0 - 1
+	local a = Lerp(sx, dx0 * g00[1] + dy0 * g00[2], dx1 * g10[1] + dy0 * g10[2])
+	local by1 = map256(iy + 1)
+	local g01 = G[P[i + by1] + 1]
+	local g11 = G[P[j + by1] + 1]
 	local dy1 = dy0 - 1
-	local i = P[bx0]
-	local j = P[bx1]
-	local b00 = P[i + by0] + 1
-	local b10 = P[j + by0] + 1
-	local b01 = P[i + by1] + 1
-	local b11 = P[j + by1] + 1
-	local g00 = G[b00]
-	local g10 = G[b10]
-	local g01 = G[b01]
-	local g11 = G[b11]
-	local dot00 = dx0 * g00[1] + dy0 * g00[2]
-	local dot10 = dx1 * g10[1] + dy0 * g10[2]
-	local dot01 = dx0 * g01[1] + dy1 * g01[2]
-	local dot11 = dx1 * g11[1] + dy1 * g11[2]
-	local sx = sCurve(dx0)
-	local sy = sCurve(dy0)
-	local a = Lerp(sx, dot00, dot10)
-	local b = Lerp(sx, dot01, dot11)
+	local b = Lerp(sx, dx0 * g01[1] + dy1 * g01[2], dx1 * g11[1] + dy1 * g11[2])
 	local noise = Lerp(sy, a, b)
+	NoiseCache[id] = noise
 
 	return noise
 end
