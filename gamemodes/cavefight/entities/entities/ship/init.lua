@@ -224,19 +224,20 @@ function ENT:PhysicsUpdate(p)
 
 		if driver:KeyDown(IN_MOVERIGHT) then
 			vel = vel + rt * acc
-			ang:RotateAroundAxis(fwd, acc)
+			ang:RotateAroundAxis(fwd, accel * 50)
+			ang:RotateAroundAxis(up, -accel * 5)
 		elseif driver:KeyDown(IN_MOVELEFT) then
 			vel = vel - rt * acc
-			ang:RotateAroundAxis(fwd, -acc)
+			ang:RotateAroundAxis(fwd, -accel * 50)
+			ang:RotateAroundAxis(up, accel * 5)
 		end
 
 		if driver:KeyDown(IN_JUMP) then
-			vel = vel + up * acc
-			-- print(vel:Angle(), vel:Angle():Up())
-			ang:RotateAroundAxis(rt, vel:Angle():Up().p)
+			vel = vel + up * acc / 2
+			ang:RotateAroundAxis(rt, accel * 30)
 		elseif driver:KeyDown(IN_DUCK) then
-			vel = vel - up * acc
-			ang:RotateAroundAxis(rt, -vel:Angle():Up().p)
+			vel = vel - up * acc / 2
+			ang:RotateAroundAxis(rt, -accel * 30)
 		end
 
 		local velL = vel:Length()
@@ -248,7 +249,7 @@ function ENT:PhysicsUpdate(p)
 		end
 
 		local d = self:WorldToLocalAngles(ang)
-		rot = rot + Vector(d.r, d.p, d.y) * rotAccel
+		rot = rot + Vector(d[3], d[1], d[2]) * rotAccel
 
 		if driver:KeyDown(IN_ATTACK) then
 			self:FireBullet(driver)
@@ -256,8 +257,12 @@ function ENT:PhysicsUpdate(p)
 
 		if driver:KeyDown(IN_ATTACK2) then
 			self:FireHook(driver)
-		elseif IsValid(self.hook) then
+		elseif self.hook and self.hook:IsValid() then
 			self.hook:Remove()
+		end
+
+		if self.Ammo ~= 50 and driver:KeyDown(IN_RELOAD) then
+			self:Reload()
 		end
 
 		vel = vel:GetNormalized() * math.min(velL, maxVel)
