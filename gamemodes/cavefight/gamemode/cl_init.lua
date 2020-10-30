@@ -226,42 +226,79 @@ function GM:HUDPaint()
 end
 
 local ending = false
+local waiting = false
+local waitingFrom = 0
+local loadingprogess, loadingprogessT, loadingprogessO = 0, 0, 0
+local hudColorBG = Color(0, 100, 155, 255)
+local tip = math.random(#tips)
+
+local function oCuerp(t, d, b, c)
+	return (c - b) * (math.pow(math.Clamp(t, 0, d) / d - 1, 3) + 1) + b
+end
 
 function GM:PostDrawHUD()
 	local tl = timeleft()
-
-	if tl < 0 then
-		net.Start('cave.requestTimeleft')
-		net.SendToServer()
-
-		return
-	end
 
 	if tl < 8 then
 		if not ending then
 			ending = true
 			self:ScoreboardShow()
 			notification.AddLegacy('End of round!', NOTIFY_HINT, 5)
+			loadingprogess = 0
+			loadingprogessT = 0
+			loadingprogessO = 0
+			tip = math.random(#tips)
+		else
+			surface.SetDrawColor(0, 0, 0, (4 - tl / 2) * 255)
+			surface.DrawRect(0, 0, ScrW(), ScrH())
+
+			if tl <= 0 then
+				if not waiting then
+					self:ScoreboardHide()
+					waiting = true
+					waitingFrom = SysTime()
+				else
+					local delta = SysTime() - waitingFrom
+					local w, h = ScrW(), ScrH()
+					surface.SetAlphaMultiplier(delta)
+					draw.SimpleText("Generating new map...", "CaveScore", w / 2, h / 2, color_white, 1, 1)
+					draw.RoundedBox(4, w / 2 - 204, h / 2 + 46, 408, 68, hudColorBG)
+					draw.RoundedBox(4, w / 2 - 200, h / 2 + 50, 400 * oCuerp(SysTime() - loadingprogessT, 1, loadingprogessO, loadingprogess), 60, hudColor)
+					draw.SimpleText("Tip: " .. tips[tip], "CaveMedium", w / 2, h / 2 + 150, color_white, 1)
+					surface.SetAlphaMultiplier(1)
+				end
+			end
+		end
+	elseif waiting then
+		local delta = (CurTime() - roundStarted) / 2
+
+		if delta > 1 then
+			waiting = false
+			ending = false
 		end
 
-		local w, h = ScrW(), ScrH()
-		surface.SetAlphaMultiplier(math.Clamp(4 - tl / 2, 0, 1))
-		surface.SetDrawColor(0, 0, 0, 255)
-		surface.DrawRect(0, 0, w, h)
-		surface.SetAlphaMultiplier(1)
-	elseif ending then
-		ending = false
-		self:ScoreboardHide()
+		surface.SetDrawColor(0, 0, 0, 255 - (CurTime() - roundStarted) / 2 * 255)
+		surface.DrawRect(0, 0, ScrW(), ScrH())
 	end
 end
 
-function GM:PreDrawHalos()
-	halo.Add(ents.FindByClass('bomb'), Color(255, 255, 0))
+do
+	local Color1 = Color(255, 255, 0)
+
+	function GM:PreDrawHalos()
+		halo.Add(ents.FindByClass('bomb'), Color1)
+	end
 end
 
 function playSound(index, pos)
 	sound.Play(sounds[index], pos, 75, 100, 1)
 end
+
+net.Receive("cave.restartProgress", function()
+	loadingprogessT = SysTime()
+	loadingprogessO = loadingprogess
+	loadingprogess = net.ReadDouble()
+end)
 
 net.Receive('cave.sound', function(len)
 	playSound(net.ReadUInt(16), net.ReadVector())
